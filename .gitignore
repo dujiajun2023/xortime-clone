@@ -4,3 +4,9 @@ dist/
 .env
 .DS_Store
 screenshot.png
+release/
+build/*.exe
+build/*.msi
+build/*.nupkg
+build/*.blockmap
+build/latest.yml
