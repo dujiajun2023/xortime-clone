@@ -45,6 +45,7 @@ export async function initDatabase() {
       is_done INTEGER DEFAULT 0,
       is_archived INTEGER DEFAULT 0,
       sort_order INTEGER DEFAULT 0,
+      deadline DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       completed_at DATETIME,
       FOREIGN KEY (category_id) REFERENCES categories(id),
@@ -97,6 +98,15 @@ export async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_project ON pomodoro_sessions(project_id);
     CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_started ON pomodoro_sessions(started_at);
   `);
+
+  try {
+    const cols = db.exec("PRAGMA table_info(tasks)");
+    const hasDeadline = cols.length > 0 && cols[0].values.some((r: any[]) => r[1] === 'deadline');
+    if (!hasDeadline) {
+      db.run('ALTER TABLE tasks ADD COLUMN deadline DATETIME');
+      save();
+    }
+  } catch {}
 
   const categoryCount = db.exec('SELECT COUNT(*) as count FROM categories');
   const count = categoryCount.length > 0 ? (categoryCount[0].values[0][0] as number) : 0;

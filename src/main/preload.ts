@@ -21,6 +21,7 @@ export type Task = {
   is_done: boolean;
   is_archived: boolean;
   sort_order: number;
+  deadline: string | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -108,6 +109,8 @@ const api = {
     ipcRenderer.invoke('update-project', id, project),
   closeProject: (id: number) =>
     ipcRenderer.invoke('close-project', id),
+  deleteProject: (id: number) =>
+    ipcRenderer.invoke('delete-project', id),
   getProjects: (isActive?: boolean) =>
     ipcRenderer.invoke('get-projects', isActive),
 
@@ -141,6 +144,22 @@ const api = {
   onStartPomodoro: (callback: () => void) => {
     ipcRenderer.on('start-pomodoro', callback);
     return () => ipcRenderer.removeListener('start-pomodoro', callback);
+  },
+
+  // Floating window
+  showFloatingWindow: () =>
+    ipcRenderer.invoke('show-floating-window'),
+  hideFloatingWindow: () =>
+    ipcRenderer.invoke('hide-floating-window'),
+  updateFloatingWindow: (data: { time: string; type: string; taskName: string }) =>
+    ipcRenderer.invoke('update-floating-window', data),
+  closeFloatingWindow: () =>
+    ipcRenderer.invoke('close-floating-window'),
+  moveFloatingWindow: (deltaX: number, deltaY: number) =>
+    ipcRenderer.invoke('move-floating-window', { deltaX, deltaY }),
+  onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string }) => void) => {
+    ipcRenderer.on('floating-update', (_, data) => callback(data));
+    return () => ipcRenderer.removeListener('floating-update', callback as any);
   },
 };
 

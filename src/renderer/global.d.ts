@@ -24,6 +24,7 @@ declare global {
       createProject: (project: any) => Promise<{ id: number }>;
       updateProject: (id: number, project: any) => Promise<{ success: boolean }>;
       closeProject: (id: number) => Promise<{ success: boolean }>;
+      deleteProject: (id: number) => Promise<{ success: boolean }>;
       getProjects: (isActive?: boolean) => Promise<any[]>;
 
       // Categories
@@ -45,6 +46,14 @@ declare global {
 
       // Events
       onStartPomodoro: (callback: () => void) => () => void;
+
+      // Floating window
+      showFloatingWindow: () => Promise<{ success: boolean }>;
+      hideFloatingWindow: () => Promise<{ success: boolean }>;
+      updateFloatingWindow: (data: { time: string; type: string; taskName: string }) => Promise<{ success: boolean }>;
+      closeFloatingWindow: () => Promise<{ success: boolean }>;
+      moveFloatingWindow: (deltaX: number, deltaY: number) => Promise<{ success: boolean }>;
+      onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string }) => void) => () => void;
     };
   }
 }

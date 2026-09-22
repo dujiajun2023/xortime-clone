@@ -15,18 +15,26 @@ export default function Timer() {
   const completedRef = useRef(false);
   const tickingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tickingAudioRef = useRef<AudioContext | null>(null);
+  const endTimeRef = useRef<number | null>(null);
+  const remainingAtPauseRef = useRef<number>(0);
 
   const sessionTypeRef = useRef(sessionType);
   const sessionIdRef = useRef(sessionId);
   const completedPomodorosRef = useRef(completedPomodoros);
   const settingsRef = useRef(settings);
   const timerStateRef = useRef(timerState);
+  const selectedTaskIdRef = useRef(selectedTaskId);
+  const timeLeftRef = useRef(timeLeft);
+  const handleTimerCompleteRef = useRef<() => void>(() => {});
+  const updateFloatingRef = useRef<(time: number, type: string) => void>(() => {});
 
   useEffect(() => { sessionTypeRef.current = sessionType; }, [sessionType]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { completedPomodorosRef.current = completedPomodoros; }, [completedPomodoros]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { timerStateRef.current = timerState; }, [timerState]);
+  useEffect(() => { selectedTaskIdRef.current = selectedTaskId; }, [selectedTaskId]);
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
 
   useEffect(() => {
     window.api.getSettings()
@@ -52,6 +60,16 @@ export default function Timer() {
     const data = await window.api.getTasks({ isDone: false, isArchived: false });
     setTasks(data);
   };
+
+  const updateFloating = useCallback((time: number, type: string) => {
+    const mins = Math.floor(time / 60);
+    const secs = time % 60;
+    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const taskName = tasks.find(t => t.id === selectedTaskIdRef.current)?.title || '';
+    window.api.updateFloatingWindow({ time: timeStr, type, taskName });
+  }, [tasks]);
+
+  useEffect(() => { updateFloatingRef.current = updateFloating; }, [updateFloating]);
 
   const playAlarmSound = useCallback(() => {
     try {
@@ -108,12 +126,19 @@ export default function Timer() {
   const startBreak = (type: 'short_break' | 'long_break', minutes: number, autoStart = false) => {
     setSessionType(type);
     sessionTypeRef.current = type;
-    setTimeLeft(minutes * 60);
+    const breakSeconds = minutes * 60;
+    setTimeLeft(breakSeconds);
+    if (autoStart) {
+      endTimeRef.current = Date.now() + breakSeconds * 1000;
+    } else {
+      endTimeRef.current = null;
+    }
     setTimerState(autoStart ? 'running' : 'break');
     timerStateRef.current = autoStart ? 'running' : 'break';
     setSessionId(null);
     sessionIdRef.current = null;
     completedRef.current = false;
+    updateFloatingRef.current(breakSeconds, type);
   };
 
   const handleTimerComplete = useCallback(async () => {
@@ -151,6 +176,7 @@ export default function Timer() {
       sessionTypeRef.current = 'work';
       setSessionId(null);
       sessionIdRef.current = null;
+      window.api.closeFloatingWindow();
 
       if (currentSettings?.auto_start_pomodoro) {
         setTimeout(() => {
@@ -160,29 +186,35 @@ export default function Timer() {
     }
   }, [playAlarmSound]);
 
+  useEffect(() => { handleTimerCompleteRef.current = handleTimerComplete; }, [handleTimerComplete]);
+
   useEffect(() => {
     if (timerState === 'running') {
       completedRef.current = false;
       intervalRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimerComplete();
-            return 0;
+        if (endTimeRef.current) {
+          const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+          setTimeLeft(remaining);
+          if (remaining <= 0) {
+            handleTimerCompleteRef.current();
+          } else {
+            updateFloatingRef.current(remaining, sessionTypeRef.current);
           }
-          return prev - 1;
-        });
-      }, 1000);
+        }
+      }, 200);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     }
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [timerState, handleTimerComplete]);
+  }, [timerState]);
 
   const startTimer = async (overrideDuration?: number) => {
     try {
@@ -194,15 +226,24 @@ export default function Timer() {
         s.long_break_minutes
       );
 
-      const result = await window.api.startPomodoroSession(selectedTaskId, null, duration, sessionTypeRef.current);
+      const taskId = selectedTaskIdRef.current;
+      const result = await window.api.startPomodoroSession(taskId, null, duration, sessionTypeRef.current);
       setSessionId(result.id);
       sessionIdRef.current = result.id;
+
+      const timeLeftSeconds = duration * 60;
+      endTimeRef.current = Date.now() + timeLeftSeconds * 1000;
+      setTimeLeft(timeLeftSeconds);
+
       setTimerState('running');
       timerStateRef.current = 'running';
 
-      if (selectedTaskId && sessionTypeRef.current === 'work') {
+      await window.api.showFloatingWindow();
+      updateFloatingRef.current(timeLeftSeconds, sessionTypeRef.current);
+
+      if (taskId && sessionTypeRef.current === 'work') {
         const dailyTasks = await window.api.getDailyTasks(new Date().toISOString().split('T')[0]);
-        const dailyTask = dailyTasks.find((dt: any) => dt.task_id === selectedTaskId);
+        const dailyTask = dailyTasks.find((dt: any) => dt.task_id === taskId);
         if (dailyTask) {
           await window.api.updateDailyTask(dailyTask.id, {
             actual_pomodoros: dailyTask.actual_pomodoros + 1,
@@ -215,11 +256,14 @@ export default function Timer() {
   };
 
   const pauseTimer = () => {
+    remainingAtPauseRef.current = timeLeftRef.current;
+    endTimeRef.current = null;
     setTimerState('paused');
     timerStateRef.current = 'paused';
   };
 
   const resumeTimer = () => {
+    endTimeRef.current = Date.now() + remainingAtPauseRef.current * 1000;
     setTimerState('running');
     timerStateRef.current = 'running';
   };
@@ -229,10 +273,12 @@ export default function Timer() {
     timerStateRef.current = 'idle';
     setSessionId(null);
     sessionIdRef.current = null;
+    endTimeRef.current = null;
     setTimeLeft((settings?.pomodoro_minutes || 25) * 60);
     setSessionType('work');
     sessionTypeRef.current = 'work';
     completedRef.current = false;
+    window.api.closeFloatingWindow();
   };
 
   const formatTime = (seconds: number) => {
@@ -251,6 +297,8 @@ export default function Timer() {
   const taskLabel = selectedTaskId
     ? tasks.find(t => t.id === selectedTaskId)?.title || '未知任务'
     : null;
+
+  const canStart = selectedTaskId !== null && settings !== null;
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -272,13 +320,16 @@ export default function Timer() {
               onChange={(e) => setSelectedTaskId(e.target.value ? Number(e.target.value) : null)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700"
             >
-              <option value="">不关联任务（自由番茄钟）</option>
+              <option value="">请选择任务...</option>
               {tasks.map((task: any) => (
                 <option key={task.id} value={task.id}>{task.title}</option>
               ))}
             </select>
             {taskLabel && (
               <p className="text-sm text-gray-500 mt-2">将记录到: {taskLabel}</p>
+            )}
+            {!selectedTaskId && (
+              <p className="text-sm text-orange-500 mt-2">请先选择一个任务再开始番茄钟</p>
             )}
           </div>
         )}
@@ -307,7 +358,7 @@ export default function Timer() {
           {timerState === 'idle' && (
             <button
               onClick={() => startTimer()}
-              disabled={!settings}
+              disabled={!canStart}
               className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               {settings ? '开始' : '加载中...'}

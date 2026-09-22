@@ -38,13 +38,6 @@ export default function ProjectList() {
     await loadProjects();
   };
 
-  const handleCloseProject = async (id: number) => {
-    if (confirm('确定要关闭这个项目吗？')) {
-      await window.api.closeProject(id);
-      await loadProjects();
-    }
-  };
-
   const handleStartEdit = (project: any) => {
     setEditingId(project.id);
     setEditForm({ name: project.name, description: project.description || '' });
@@ -54,6 +47,12 @@ export default function ProjectList() {
     if (!editForm.name.trim()) return;
     await window.api.updateProject(id, editForm);
     setEditingId(null);
+    await loadProjects();
+  };
+
+  const handleDeleteProject = async (id: number) => {
+    if (!confirm('确定要删除这个项目吗？项目下的任务不会被删除。')) return;
+    await window.api.deleteProject(id);
     await loadProjects();
   };
 
@@ -161,19 +160,17 @@ export default function ProjectList() {
                 </div>
 
                 <div className="flex gap-2">
-                  {project.is_active && (
-                    <button
-                      onClick={() => handleCloseProject(project.id)}
-                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
-                    >
-                      关闭项目
-                    </button>
-                  )}
                   <button
                     onClick={() => handleStartEdit(project)}
                     className="flex-1 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm"
                   >
                     编辑
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProject(project.id)}
+                    className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-sm"
+                  >
+                    删除
                   </button>
                 </div>
               </>

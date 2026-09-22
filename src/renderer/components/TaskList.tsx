@@ -13,6 +13,7 @@ export default function TaskList() {
     category_id: null as number | null,
     project_id: null as number | null,
     estimated_pomodoros: 1,
+    deadline: '' as string,
   });
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -45,13 +46,14 @@ export default function TaskList() {
 
     await window.api.createTask({
       ...newTask,
+      deadline: newTask.deadline || null,
       is_done: false,
       is_archived: false,
       actual_pomodoros: 0,
       sort_order: tasks.length,
     });
 
-    setNewTask({ title: '', description: '', category_id: null, project_id: null, estimated_pomodoros: 1 });
+    setNewTask({ title: '', description: '', category_id: null, project_id: null, estimated_pomodoros: 1, deadline: '' });
     setShowAddForm(false);
     await loadData();
   };
@@ -91,9 +93,35 @@ export default function TaskList() {
     await loadData();
   };
 
+  const handleUpdatePomodoros = async (taskId: number, delta: number) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const newVal = Math.max(1, task.estimated_pomodoros + delta);
+    await window.api.updateTask(taskId, { estimated_pomodoros: newVal });
+    await loadData();
+  };
+
+  const handleUpdateDailyPomodoros = async (dailyTaskId: number, currentEstimate: number, delta: number) => {
+    const newVal = Math.max(1, currentEstimate + delta);
+    await window.api.updateDailyTask(dailyTaskId, { estimated_pomodoros: newVal });
+    await loadDailyTasks();
+  };
+
   const getCategoryColor = (categoryId: number | null) => {
     const cat = categories.find(c => c.id === categoryId);
     return cat?.color || '#9ca3af';
+  };
+
+  const getDeadlineStatus = (deadline: string | null) => {
+    if (!deadline) return null;
+    const now = new Date();
+    const dl = new Date(deadline);
+    const diff = dl.getTime() - now.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    if (days < 0) return { text: '已过期', color: 'text-red-600 bg-red-50' };
+    if (days === 0) return { text: '今天到期', color: 'text-red-600 bg-red-50' };
+    if (days <= 3) return { text: `${days}天后到期`, color: 'text-orange-600 bg-orange-50' };
+    return { text: `${days}天后到期`, color: 'text-gray-500 bg-gray-50' };
   };
 
   return (
@@ -131,8 +159,22 @@ export default function TaskList() {
                   <div className={`font-medium ${dt.is_done ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                     {dt.title}
                   </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    预估 {dt.estimated_pomodoros} 🍅 | 实际 {dt.actual_pomodoros} 🍅
+                  <div className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                    <span>预估</span>
+                    <button
+                      onClick={() => handleUpdateDailyPomodoros(dt.id, dt.estimated_pomodoros, -1)}
+                      className="w-5 h-5 flex items-center justify-center bg-gray-200 text-gray-600 rounded hover:bg-gray-300 text-xs"
+                    >
+                      -
+                    </button>
+                    <span className="font-medium">{dt.estimated_pomodoros} 🍅</span>
+                    <button
+                      onClick={() => handleUpdateDailyPomodoros(dt.id, dt.estimated_pomodoros, 1)}
+                      className="w-5 h-5 flex items-center justify-center bg-gray-200 text-gray-600 rounded hover:bg-gray-300 text-xs"
+                    >
+                      +
+                    </button>
+                    <span className="ml-2">| 实际 {dt.actual_pomodoros} 🍅</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
@@ -215,6 +257,17 @@ export default function TaskList() {
                 min="1"
               />
             </div>
+            <div className="flex gap-3 mb-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                DDL：
+                <input
+                  type="date"
+                  value={newTask.deadline}
+                  onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </label>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={handleAddTask}
@@ -233,52 +286,72 @@ export default function TaskList() {
         )}
 
         <div className="space-y-2">
-          {tasks.map((task: any) => (
-            <div key={task.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 group">
-              <div
-                className="w-1 h-12 rounded-full"
-                style={{ backgroundColor: getCategoryColor(task.category_id) }}
-              />
-              <div className="flex-1 min-w-0">
-                {editingId === task.id ? (
-                  <input
-                    type="text"
-                    defaultValue={task.title}
-                    autoFocus
-                    onBlur={(e) => handleUpdateTitle(task.id, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleUpdateTitle(task.id, (e.target as HTMLInputElement).value);
-                      if (e.key === 'Escape') setEditingId(null);
-                    }}
-                    className="w-full px-2 py-1 border border-blue-300 rounded text-gray-800"
-                  />
-                ) : (
-                  <div
-                    className="font-medium text-gray-800 cursor-pointer hover:text-blue-600"
-                    onDoubleClick={() => setEditingId(task.id)}
+          {tasks.map((task: any) => {
+            const dlStatus = getDeadlineStatus(task.deadline);
+            return (
+              <div key={task.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 group">
+                <div
+                  className="w-1 h-12 rounded-full"
+                  style={{ backgroundColor: getCategoryColor(task.category_id) }}
+                />
+                <div className="flex-1 min-w-0">
+                  {editingId === task.id ? (
+                    <input
+                      type="text"
+                      defaultValue={task.title}
+                      autoFocus
+                      onBlur={(e) => handleUpdateTitle(task.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleUpdateTitle(task.id, (e.target as HTMLInputElement).value);
+                        if (e.key === 'Escape') setEditingId(null);
+                      }}
+                      className="w-full px-2 py-1 border border-blue-300 rounded text-gray-800"
+                    />
+                  ) : (
+                    <div
+                      className="font-medium text-gray-800 cursor-pointer hover:text-blue-600"
+                      onDoubleClick={() => setEditingId(task.id)}
+                    >
+                      {task.title}
+                    </div>
+                  )}
+                  {task.description && <div className="text-sm text-gray-500 mt-1">{task.description}</div>}
+                  {dlStatus && (
+                    <span className={`inline-block text-xs px-2 py-0.5 rounded mt-1 ${dlStatus.color}`}>
+                      {dlStatus.text}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 text-sm">
+                  <button
+                    onClick={() => handleUpdatePomodoros(task.id, -1)}
+                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
                   >
-                    {task.title}
-                  </div>
-                )}
-                {task.description && <div className="text-sm text-gray-500 mt-1">{task.description}</div>}
+                    -
+                  </button>
+                  <span className="w-8 text-center text-gray-700">{task.estimated_pomodoros} 🍅</span>
+                  <button
+                    onClick={() => handleUpdatePomodoros(task.id, 1)}
+                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  onClick={() => handleAddToToday(task)}
+                  className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
+                >
+                  加入今日
+                </button>
+                <button
+                  onClick={() => handleDeleteTask(task.id)}
+                  className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-500 hover:bg-red-50 rounded text-sm transition-opacity"
+                >
+                  删除
+                </button>
               </div>
-              <div className="text-sm text-gray-500">
-                {task.estimated_pomodoros} 🍅
-              </div>
-              <button
-                onClick={() => handleAddToToday(task)}
-                className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
-              >
-                加入今日
-              </button>
-              <button
-                onClick={() => handleDeleteTask(task.id)}
-                className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-500 hover:bg-red-50 rounded text-sm transition-opacity"
-              >
-                删除
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

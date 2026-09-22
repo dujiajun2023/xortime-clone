@@ -4,6 +4,7 @@ import { initDatabase, queryOne } from './database';
 import { registerIpcHandlers } from './ipc';
 
 let mainWindow: BrowserWindow | null = null;
+let floatingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let forceQuit = false;
 
@@ -97,6 +98,73 @@ function createTray() {
     mainWindow?.focus();
   });
 }
+
+function createFloatingWindow() {
+  floatingWindow = new BrowserWindow({
+    width: 280,
+    height: 64,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  if (isDev) {
+    floatingWindow.loadURL('http://localhost:5173/floating.html');
+  } else {
+    floatingWindow.loadFile(path.join(__dirname, '../renderer/floating.html'));
+  }
+
+  floatingWindow.once('ready-to-show', () => {
+    floatingWindow?.show();
+  });
+
+  floatingWindow.on('closed', () => {
+    floatingWindow = null;
+  });
+}
+
+ipcMain.handle('show-floating-window', () => {
+  if (!floatingWindow || floatingWindow.isDestroyed()) {
+    createFloatingWindow();
+  } else {
+    floatingWindow.show();
+  }
+  return { success: true };
+});
+
+ipcMain.handle('hide-floating-window', () => {
+  floatingWindow?.hide();
+  return { success: true };
+});
+
+ipcMain.handle('update-floating-window', (_, data) => {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    floatingWindow.webContents.send('floating-update', data);
+  }
+  return { success: true };
+});
+
+ipcMain.handle('close-floating-window', () => {
+  floatingWindow?.close();
+  floatingWindow = null;
+  return { success: true };
+});
+
+ipcMain.handle('move-floating-window', (_, { deltaX, deltaY }) => {
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    const [x, y] = floatingWindow.getPosition();
+    floatingWindow.setPosition(x + deltaX, y + deltaY);
+  }
+  return { success: true };
+});
 
 app.whenReady().then(async () => {
   await initDatabase();

@@ -45,8 +45,8 @@ export function registerIpcHandlers() {
   // Tasks
   ipcMain.handle('create-task', (_, task) => {
     const result = runSql(
-      `INSERT INTO tasks (title, description, category_id, project_id, estimated_pomodoros, actual_pomodoros, is_done, is_archived, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (title, description, category_id, project_id, estimated_pomodoros, actual_pomodoros, is_done, is_archived, sort_order, deadline)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         task.title,
         task.description,
@@ -57,6 +57,7 @@ export function registerIpcHandlers() {
         task.is_done ? 1 : 0,
         task.is_archived ? 1 : 0,
         task.sort_order,
+        task.deadline,
       ]
     );
     return { id: result.lastInsertRowid };
@@ -104,6 +105,10 @@ export function registerIpcHandlers() {
     if (task.sort_order !== undefined) {
       fields.push('sort_order = ?');
       params.push(task.sort_order);
+    }
+    if (task.deadline !== undefined) {
+      fields.push('deadline = ?');
+      params.push(task.deadline);
     }
 
     if (fields.length === 0) return { success: false };
@@ -245,6 +250,11 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('close-project', (_, id) => {
     runSql(`UPDATE projects SET is_active = 0, closed_at = datetime('now') WHERE id = ?`, [id]);
+    return { success: true };
+  });
+
+  ipcMain.handle('delete-project', (_, id) => {
+    runSql('DELETE FROM projects WHERE id = ?', [id]);
     return { success: true };
   });
 
