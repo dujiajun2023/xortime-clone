@@ -22,7 +22,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
     title: 'XorTime Clone',
-    icon: path.join(__dirname, '../renderer/assets/icon.png'),
+    icon: path.join(__dirname, '../../build/icon.ico'),
   });
 
   if (isDev) {
@@ -105,7 +105,6 @@ function createFloatingWindow() {
     height: 64,
     frame: false,
     transparent: true,
-    alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
     show: false,
@@ -115,6 +114,9 @@ function createFloatingWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  // Set highest always-on-top level after creation
+  floatingWindow.setAlwaysOnTop(true, 'floating');
 
   if (isDev) {
     floatingWindow.loadURL('http://localhost:5173/floating.html');
