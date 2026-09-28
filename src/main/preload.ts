@@ -99,6 +99,8 @@ const api = {
     ipcRenderer.invoke('update-daily-task', id, dailyTask),
   getDailyTasks: (date: string) =>
     ipcRenderer.invoke('get-daily-tasks', date),
+  getDailyTasksRange: (startDate: string, endDate: string) =>
+    ipcRenderer.invoke('get-daily-tasks-range', startDate, endDate),
   incrementInterruption: (dailyTaskId: number, type: 'internal' | 'external') =>
     ipcRenderer.invoke('increment-interruption', dailyTaskId, type),
 
@@ -151,12 +153,14 @@ const api = {
     ipcRenderer.invoke('show-floating-window'),
   hideFloatingWindow: () =>
     ipcRenderer.invoke('hide-floating-window'),
-  updateFloatingWindow: (data: { time: string; type: string; taskName: string }) =>
+  updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean }) =>
     ipcRenderer.invoke('update-floating-window', data),
   closeFloatingWindow: () =>
     ipcRenderer.invoke('close-floating-window'),
   moveFloatingWindow: (deltaX: number, deltaY: number) =>
     ipcRenderer.invoke('move-floating-window', { deltaX, deltaY }),
+  focusMainWindow: () =>
+    ipcRenderer.invoke('focus-main-window'),
   onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string }) => void) => {
     ipcRenderer.on('floating-update', (_, data) => callback(data));
     return () => ipcRenderer.removeListener('floating-update', callback as any);

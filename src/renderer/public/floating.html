@@ -50,6 +50,14 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    @keyframes flash-alert {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.15; }
+    }
+    .flash {
+      animation: flash-alert 0.7s ease-in-out infinite;
+      background: rgba(185, 28, 28, 0.95);
+    }
   </style>
 </head>
 <body>
@@ -66,7 +74,11 @@
 
     window.api.onFloatingUpdate((data) => {
       timeEl.textContent = data.time;
-      if (data.type === 'work') {
+      container.classList.toggle('flash', !!data.flash);
+      if (data.flash) {
+        badge.textContent = '完成';
+        badge.className = 'type-badge type-work';
+      } else if (data.type === 'work') {
         badge.textContent = '专注';
         badge.className = 'type-badge type-work';
       } else if (data.type === 'short_break') {
@@ -79,12 +91,14 @@
       taskEl.textContent = data.taskName || '';
     });
 
-    // Drag functionality
+    // Drag functionality; a press without movement is treated as a click
     let isDragging = false;
+    let moved = false;
     let startX, startY;
 
     container.addEventListener('mousedown', (e) => {
       isDragging = true;
+      moved = false;
       startX = e.screenX;
       startY = e.screenY;
       e.preventDefault();
@@ -94,12 +108,17 @@
       if (!isDragging) return;
       const deltaX = e.screenX - startX;
       const deltaY = e.screenY - startY;
+      if (!moved && Math.abs(deltaX) <= 3 && Math.abs(deltaY) <= 3) return;
+      moved = true;
       window.api.moveFloatingWindow(deltaX, deltaY);
       startX = e.screenX;
       startY = e.screenY;
     });
 
     document.addEventListener('mouseup', () => {
+      if (isDragging && !moved) {
+        window.api.focusMainWindow();
+      }
       isDragging = false;
     });
   </script>

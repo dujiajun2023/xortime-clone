@@ -30,11 +30,11 @@ export function registerIpcHandlers() {
       params.push(filters.projectId);
     }
     if (filters.startDate) {
-      query += ' AND started_at >= ?';
+      query += ' AND date(started_at) >= ?';
       params.push(filters.startDate);
     }
     if (filters.endDate) {
-      query += ' AND started_at <= ?';
+      query += ' AND date(started_at) <= ?';
       params.push(filters.endDate);
     }
 
@@ -206,6 +206,17 @@ export function registerIpcHandlers() {
        WHERE dt.date = ?
        ORDER BY dt.id ASC`,
       [date]
+    );
+  });
+
+  ipcMain.handle('get-daily-tasks-range', (_, startDate, endDate) => {
+    return queryAll(
+      `SELECT dt.*, t.title, t.category_id, t.project_id
+       FROM daily_tasks dt
+       LEFT JOIN tasks t ON dt.task_id = t.id
+       WHERE dt.date >= ? AND dt.date <= ?
+       ORDER BY dt.date ASC, dt.id ASC`,
+      [startDate, endDate]
     );
   });
 

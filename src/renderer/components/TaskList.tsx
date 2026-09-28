@@ -107,6 +107,12 @@ export default function TaskList() {
     await loadDailyTasks();
   };
 
+  const handleUpdateActualPomodoros = async (dailyTaskId: number, currentActual: number, delta: number) => {
+    const newVal = Math.max(0, currentActual + delta);
+    await window.api.updateDailyTask(dailyTaskId, { actual_pomodoros: newVal });
+    await loadDailyTasks();
+  };
+
   const getCategoryColor = (categoryId: number | null) => {
     const cat = categories.find(c => c.id === categoryId);
     return cat?.color || '#9ca3af';
@@ -174,7 +180,20 @@ export default function TaskList() {
                     >
                       +
                     </button>
-                    <span className="ml-2">| 实际 {dt.actual_pomodoros} 🍅</span>
+                    <span className="ml-2">| 实际</span>
+                    <button
+                      onClick={() => handleUpdateActualPomodoros(dt.id, dt.actual_pomodoros, -1)}
+                      className="w-5 h-5 flex items-center justify-center bg-blue-200 text-blue-700 rounded hover:bg-blue-300 text-xs"
+                    >
+                      -
+                    </button>
+                    <span className="font-medium text-blue-700">{dt.actual_pomodoros} 🍅</span>
+                    <button
+                      onClick={() => handleUpdateActualPomodoros(dt.id, dt.actual_pomodoros, 1)}
+                      className="w-5 h-5 flex items-center justify-center bg-blue-200 text-blue-700 rounded hover:bg-blue-300 text-xs"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-sm">

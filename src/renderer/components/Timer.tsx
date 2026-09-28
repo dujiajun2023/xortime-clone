@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-type TimerState = 'idle' | 'running' | 'paused' | 'break';
+type TimerState = 'idle' | 'running' | 'paused' | 'confirm';
+type BreakType = 'short_break' | 'long_break';
 
 export default function Timer() {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
@@ -11,6 +12,8 @@ export default function Timer() {
   const [completedPomodoros, setCompletedPomodoros] = useState(0);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [confirmNext, setConfirmNext] = useState<BreakType | null>(null);
+  const [prompt, setPrompt] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const completedRef = useRef(false);
   const tickingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -26,7 +29,7 @@ export default function Timer() {
   const selectedTaskIdRef = useRef(selectedTaskId);
   const timeLeftRef = useRef(timeLeft);
   const handleTimerCompleteRef = useRef<() => void>(() => {});
-  const updateFloatingRef = useRef<(time: number, type: string) => void>(() => {});
+  const updateFloatingRef = useRef<(time: number, type: string, flash?: boolean) => void>(() => {});
 
   useEffect(() => { sessionTypeRef.current = sessionType; }, [sessionType]);
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -35,6 +38,77 @@ export default function Timer() {
   useEffect(() => { timerStateRef.current = timerState; }, [timerState]);
   useEffect(() => { selectedTaskIdRef.current = selectedTaskId; }, [selectedTaskId]);
   useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+
+  const clearPersistedTimer = () => {
+    ['xortime_endTime', 'xortime_sessionType', 'xortime_selectedTaskId',
+     'xortime_sessionId', 'xortime_completedPomodoros'].forEach((k) => localStorage.removeItem(k));
+  };
+
+  // Switching tabs unmounts this component, so a running pomodoro has to be
+  // rebuilt from storage or it silently resets to a full 25:00.
+  useEffect(() => {
+    const savedEndTime = localStorage.getItem('xortime_endTime');
+    const savedSessionType = localStorage.getItem('xortime_sessionType');
+    if (!savedEndTime || !savedSessionType) return;
+
+    const endTime = parseInt(savedEndTime, 10);
+    if (!(endTime > Date.now())) {
+      clearPersistedTimer();
+      return;
+    }
+
+    endTimeRef.current = endTime;
+    setTimeLeft(Math.max(0, Math.ceil((endTime - Date.now()) / 1000)));
+    setSessionType(savedSessionType as 'work' | 'short_break' | 'long_break');
+
+    const savedTaskId = localStorage.getItem('xortime_selectedTaskId');
+    if (savedTaskId) setSelectedTaskId(parseInt(savedTaskId, 10));
+    const savedSessionId = localStorage.getItem('xortime_sessionId');
+    if (savedSessionId) setSessionId(parseInt(savedSessionId, 10));
+    const savedCompleted = localStorage.getItem('xortime_completedPomodoros');
+    if (savedCompleted) setCompletedPomodoros(parseInt(savedCompleted, 10));
+
+    setTimerState('running');
+    window.api.showFloatingWindow();
+  }, []);
+
+  // A pending confirmation prompt also has to survive remounts
+  useEffect(() => {
+    const savedEndTime = localStorage.getItem('xortime_endTime');
+    if (savedEndTime && parseInt(savedEndTime, 10) > Date.now()) return;
+
+    const savedConfirm = localStorage.getItem('xortime_confirm');
+    if (!savedConfirm) return;
+
+    setConfirmNext(savedConfirm as BreakType);
+    setTimerState('confirm');
+    timerStateRef.current = 'confirm';
+    setTimeLeft(0);
+    window.api.showFloatingWindow();
+    window.api.updateFloatingWindow({ time: '00:00', type: 'work', taskName: '', flash: true });
+  }, []);
+
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    if (timerState === 'confirm' && confirmNext) {
+      localStorage.setItem('xortime_confirm', confirmNext);
+    } else {
+      localStorage.removeItem('xortime_confirm');
+    }
+    if (timerState === 'running' && endTimeRef.current) {
+      localStorage.setItem('xortime_endTime', String(endTimeRef.current));
+      localStorage.setItem('xortime_sessionType', sessionTypeRef.current);
+      localStorage.setItem('xortime_selectedTaskId', String(selectedTaskIdRef.current ?? ''));
+      localStorage.setItem('xortime_sessionId', String(sessionIdRef.current ?? ''));
+      localStorage.setItem('xortime_completedPomodoros', String(completedPomodorosRef.current));
+    } else if (timerState === 'idle') {
+      clearPersistedTimer();
+    }
+  }, [timerState, confirmNext]);
 
   useEffect(() => {
     window.api.getSettings()
@@ -61,12 +135,12 @@ export default function Timer() {
     setTasks(data);
   };
 
-  const updateFloating = useCallback((time: number, type: string) => {
+  const updateFloating = useCallback((time: number, type: string, flash = false) => {
     const mins = Math.floor(time / 60);
     const secs = time % 60;
     const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     const taskName = tasks.find(t => t.id === selectedTaskIdRef.current)?.title || '';
-    window.api.updateFloatingWindow({ time: timeStr, type, taskName });
+    window.api.updateFloatingWindow({ time: timeStr, type, taskName, flash });
   }, [tasks]);
 
   useEffect(() => { updateFloatingRef.current = updateFloating; }, [updateFloating]);
@@ -123,22 +197,38 @@ export default function Timer() {
     };
   }, [timerState, settings?.play_ticking, playTick]);
 
-  const startBreak = (type: 'short_break' | 'long_break', minutes: number, autoStart = false) => {
+  const startBreak = (type: BreakType, minutes: number) => {
     setSessionType(type);
     sessionTypeRef.current = type;
     const breakSeconds = minutes * 60;
     setTimeLeft(breakSeconds);
-    if (autoStart) {
-      endTimeRef.current = Date.now() + breakSeconds * 1000;
-    } else {
-      endTimeRef.current = null;
-    }
-    setTimerState(autoStart ? 'running' : 'break');
-    timerStateRef.current = autoStart ? 'running' : 'break';
+    endTimeRef.current = Date.now() + breakSeconds * 1000;
+    setTimerState('running');
+    timerStateRef.current = 'running';
     setSessionId(null);
     sessionIdRef.current = null;
     completedRef.current = false;
     updateFloatingRef.current(breakSeconds, type);
+  };
+
+  const breakMinutes = (s: any, type: BreakType) =>
+    type === 'long_break' ? (s?.long_break_minutes || 15) : (s?.break_minutes || 5);
+
+  const enterConfirm = (next: BreakType) => {
+    setConfirmNext(next);
+    setTimerState('confirm');
+    timerStateRef.current = 'confirm';
+    setTimeLeft(0);
+    window.api.showFloatingWindow();
+    updateFloatingRef.current(0, next, true);
+  };
+
+  const handleConfirm = () => {
+    const next = confirmNext;
+    if (!next) return;
+    setConfirmNext(null);
+    localStorage.removeItem('xortime_confirm');
+    startBreak(next, breakMinutes(settingsRef.current, next));
   };
 
   const handleTimerComplete = useCallback(async () => {
@@ -163,63 +253,118 @@ export default function Timer() {
       setCompletedPomodoros(newCompleted);
       completedPomodorosRef.current = newCompleted;
 
-      if (currentSettings && newCompleted % currentSettings.pomodoros_until_long_break === 0) {
-        startBreak('long_break', currentSettings.long_break_minutes, currentSettings.auto_start_break);
+      // Record the finished pomodoro against today's plan for this task
+      const taskId = selectedTaskIdRef.current;
+      if (taskId) {
+        const dateStr = new Date().toISOString().split('T')[0];
+        const dailyTasks = await window.api.getDailyTasks(dateStr);
+        const dailyTask = dailyTasks.find((dt: any) => dt.task_id === taskId);
+        if (dailyTask) {
+          await window.api.updateDailyTask(dailyTask.id, {
+            actual_pomodoros: (dailyTask.actual_pomodoros || 0) + 1,
+          });
+        } else {
+          await window.api.createDailyTask({
+            task_id: taskId,
+            date: dateStr,
+            estimated_pomodoros: 1,
+            actual_pomodoros: 1,
+            internal_interruptions: 0,
+            external_interruptions: 0,
+            is_done: false,
+          });
+        }
+      }
+
+      const nextBreak: BreakType =
+        currentSettings && newCompleted % currentSettings.pomodoros_until_long_break === 0
+          ? 'long_break'
+          : 'short_break';
+
+      if (currentSettings?.auto_start_break) {
+        startBreak(nextBreak, breakMinutes(currentSettings, nextBreak));
       } else {
-        startBreak('short_break', currentSettings?.break_minutes || 5, currentSettings?.auto_start_break);
+        enterConfirm(nextBreak);
       }
     } else {
-      setTimerState('idle');
-      timerStateRef.current = 'idle';
       setTimeLeft((currentSettings?.pomodoro_minutes || 25) * 60);
       setSessionType('work');
       sessionTypeRef.current = 'work';
       setSessionId(null);
       sessionIdRef.current = null;
-      window.api.closeFloatingWindow();
 
       if (currentSettings?.auto_start_pomodoro) {
-        setTimeout(() => {
-          startTimer((currentSettings.pomodoro_minutes || 25) * 60);
-        }, 500);
+        startTimer((currentSettings.pomodoro_minutes || 25) * 60);
+      } else {
+        // Back to idle so the task can be switched before the next pomodoro
+        setPrompt('休息结束！选择下一个任务，然后开始');
+        setTimerState('idle');
+        timerStateRef.current = 'idle';
+        updateFloatingRef.current(0, 'work', true);
       }
     }
   }, [playAlarmSound]);
 
   useEffect(() => { handleTimerCompleteRef.current = handleTimerComplete; }, [handleTimerComplete]);
 
+  // Sync time when window becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && timerStateRef.current === 'running' && endTimeRef.current) {
+        // Immediately sync the time when window becomes visible
+        const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        
+        if (remaining <= 0) {
+          handleTimerCompleteRef.current();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   useEffect(() => {
     if (timerState === 'running') {
       completedRef.current = false;
-      intervalRef.current = setInterval(() => {
+      
+      const tick = () => {
         if (endTimeRef.current) {
-          const remaining = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+          const now = Date.now();
+          const remaining = Math.max(0, Math.ceil((endTimeRef.current - now) / 1000));
           setTimeLeft(remaining);
+          
           if (remaining <= 0) {
+            // handleTimerComplete guards itself via completedRef, so repeated
+            // ticks cannot double-fire it
             handleTimerCompleteRef.current();
           } else {
             updateFloatingRef.current(remaining, sessionTypeRef.current);
           }
         }
-      }, 200);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      };
+      
+      // Use 50ms interval for faster updates
+      const tickInterval = setInterval(tick, 50);
+      
+      // Also tick immediately to avoid initial delay
+      tick();
+      
+      return () => {
+        clearInterval(tickInterval);
+      };
     }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
   }, [timerState]);
 
   const startTimer = async (overrideDuration?: number) => {
     try {
       const s = settingsRef.current;
       if (!s) return;
+      setPrompt(null);
       const duration = overrideDuration ?? (
         sessionTypeRef.current === 'work' ? s.pomodoro_minutes :
         sessionTypeRef.current === 'short_break' ? s.break_minutes :
@@ -227,7 +372,10 @@ export default function Timer() {
       );
 
       const taskId = selectedTaskIdRef.current;
-      const result = await window.api.startPomodoroSession(taskId, null, duration, sessionTypeRef.current);
+      const projectId = taskId
+        ? (tasks.find((t: any) => t.id === taskId)?.project_id ?? null)
+        : null;
+      const result = await window.api.startPomodoroSession(taskId, projectId, duration, sessionTypeRef.current);
       setSessionId(result.id);
       sessionIdRef.current = result.id;
 
@@ -240,16 +388,6 @@ export default function Timer() {
 
       await window.api.showFloatingWindow();
       updateFloatingRef.current(timeLeftSeconds, sessionTypeRef.current);
-
-      if (taskId && sessionTypeRef.current === 'work') {
-        const dailyTasks = await window.api.getDailyTasks(new Date().toISOString().split('T')[0]);
-        const dailyTask = dailyTasks.find((dt: any) => dt.task_id === taskId);
-        if (dailyTask) {
-          await window.api.updateDailyTask(dailyTask.id, {
-            actual_pomodoros: dailyTask.actual_pomodoros + 1,
-          });
-        }
-      }
     } catch (err) {
       console.error('Failed to start timer:', err);
     }
@@ -334,7 +472,23 @@ export default function Timer() {
           </div>
         )}
 
-        <div className="relative w-80 h-80 mx-auto mb-8">
+        {timerState === 'confirm' && (
+          <div className="mb-6 animate-flash">
+            <span className="inline-block px-6 py-3 rounded-xl bg-red-500 text-white text-lg font-bold shadow-lg">
+              番茄钟完成！
+            </span>
+          </div>
+        )}
+
+        {timerState === 'idle' && prompt && (
+          <div className="mb-6 animate-flash">
+            <span className="inline-block px-6 py-3 rounded-xl bg-green-600 text-white text-lg font-bold shadow-lg">
+              {prompt}
+            </span>
+          </div>
+        )}
+
+        <div className={`relative w-80 h-80 mx-auto mb-8 ${timerState === 'confirm' ? 'animate-flash' : ''}`}>
           <svg className="w-full h-full transform -rotate-90">
             <circle cx="160" cy="160" r="140" stroke="#e5e7eb" strokeWidth="12" fill="none" />
             <circle
@@ -359,9 +513,13 @@ export default function Timer() {
             <button
               onClick={() => startTimer()}
               disabled={!canStart}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className={`px-8 py-3 text-white rounded-lg font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${
+                prompt
+                  ? 'bg-green-600 hover:bg-green-700 animate-flash'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
-              {settings ? '开始' : '加载中...'}
+              {prompt ? '开始下一个番茄钟' : settings ? '开始' : '加载中...'}
             </button>
           )}
           {timerState === 'running' && (
@@ -388,12 +546,16 @@ export default function Timer() {
               重置
             </button>
           )}
-          {timerState === 'break' && (
+          {timerState === 'confirm' && (
             <button
-              onClick={() => startTimer()}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              onClick={handleConfirm}
+              className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors animate-flash"
             >
-              开始休息
+              {confirmNext === 'work'
+                ? '开始下一个番茄钟'
+                : confirmNext === 'long_break'
+                  ? `开始长休息（${settings?.long_break_minutes ?? 15} 分钟）`
+                  : `开始休息（${settings?.break_minutes ?? 5} 分钟）`}
             </button>
           )}
         </div>

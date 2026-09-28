@@ -18,6 +18,7 @@ declare global {
       createDailyTask: (dailyTask: any) => Promise<{ id: number }>;
       updateDailyTask: (id: number, dailyTask: any) => Promise<{ success: boolean }>;
       getDailyTasks: (date: string) => Promise<any[]>;
+      getDailyTasksRange: (startDate: string, endDate: string) => Promise<any[]>;
       incrementInterruption: (dailyTaskId: number, type: 'internal' | 'external') => Promise<{ success: boolean }>;
 
       // Projects
@@ -50,10 +51,11 @@ declare global {
       // Floating window
       showFloatingWindow: () => Promise<{ success: boolean }>;
       hideFloatingWindow: () => Promise<{ success: boolean }>;
-      updateFloatingWindow: (data: { time: string; type: string; taskName: string }) => Promise<{ success: boolean }>;
+      updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean }) => Promise<{ success: boolean }>;
       closeFloatingWindow: () => Promise<{ success: boolean }>;
       moveFloatingWindow: (deltaX: number, deltaY: number) => Promise<{ success: boolean }>;
-      onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string }) => void) => () => void;
+      focusMainWindow: () => Promise<{ success: boolean }>;
+      onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string; flash?: boolean }) => void) => () => void;
     };
   }
 }

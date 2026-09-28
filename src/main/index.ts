@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Tray, Menu, ipcMain } from 'electron';
+import { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, NativeImage } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { initDatabase, queryOne } from './database';
 import { registerIpcHandlers } from './ipc';
 
@@ -7,10 +8,44 @@ let mainWindow: BrowserWindow | null = null;
 let floatingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let forceQuit = false;
+let appIcon: NativeImage = nativeImage.createEmpty();
 
-const isDev = !app.isPackaged;
+// `npx electron .` on a built app is NOT a dev run: only an explicit flag means dev.
+const isDev = !app.isPackaged && process.argv.includes('--dev');
+const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+
+function resolveIconPath(): string | null {
+  const candidates = [
+    // unpackaged: dist/main -> <project>/build
+    path.join(__dirname, '../../build/icon.ico'),
+    // packaged: resources/app.asar/dist/main -> app.asar/build
+    path.join(__dirname, '../build/icon.ico'),
+    path.join(process.resourcesPath || '', 'icon.ico'),
+  ];
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function loadAppIcon() {
+  const iconPath = resolveIconPath();
+  if (!iconPath) {
+    console.error('[icon] no icon.ico found in any candidate path');
+    return;
+  }
+  // createFromPath never throws on a bad file, it returns an empty image
+  const loaded = nativeImage.createFromPath(iconPath);
+  if (loaded.isEmpty()) {
+    console.error('[icon] file exists but decoded to an empty image:', iconPath);
+    return;
+  }
+  appIcon = loaded;
+}
 
 function createWindow() {
+  loadAppIcon();
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -20,13 +55,22 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false, // Disable background throttling
     },
     title: 'XorTime Clone',
-    icon: path.join(__dirname, '../../build/icon.ico'),
+    icon: appIcon,
+  });
+
+  // Surface load failures instead of silently showing a blank window
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[RENDERER did-fail-load] ${code} ${desc} ${url}`);
+  });
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[RENDERER gone] ${JSON.stringify(details)}`);
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -51,18 +95,13 @@ function createWindow() {
 }
 
 function createTray() {
-  try {
-    const iconPath = path.join(__dirname, '../renderer/assets/tray-icon.png');
-    tray = new Tray(iconPath);
-  } catch {
-    try {
-      const nativeImage = require('electron').nativeImage;
-      const defaultIcon = nativeImage.createEmpty();
-      tray = new Tray(defaultIcon);
-    } catch {
-      return;
-    }
+  if (appIcon.isEmpty()) {
+    console.error('[tray] skipping: no usable app icon');
+    return;
   }
+
+  // Vite does not emit tray-icon.png into dist, so derive the tray image from the app icon
+  tray = new Tray(appIcon.resize({ width: 16, height: 16 }));
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -112,20 +151,20 @@ function createFloatingWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false, // Disable background throttling
     },
   });
 
-  // Set highest always-on-top level after creation
-  floatingWindow.setAlwaysOnTop(true, 'floating');
-
   if (isDev) {
-    floatingWindow.loadURL('http://localhost:5173/floating.html');
+    floatingWindow.loadURL(`${devServerUrl}/floating.html`);
   } else {
     floatingWindow.loadFile(path.join(__dirname, '../renderer/floating.html'));
   }
 
   floatingWindow.once('ready-to-show', () => {
     floatingWindow?.show();
+    // Set highest always-on-top level after showing
+    floatingWindow?.setAlwaysOnTop(true, 'screen-saver');
   });
 
   floatingWindow.on('closed', () => {
@@ -138,6 +177,14 @@ ipcMain.handle('show-floating-window', () => {
     createFloatingWindow();
   } else {
     floatingWindow.show();
+    // Re-apply always-on-top after showing to ensure it stays on top
+    floatingWindow.setAlwaysOnTop(true, 'screen-saver');
+    // Also try setting it again after a short delay
+    setTimeout(() => {
+      if (floatingWindow && !floatingWindow.isDestroyed()) {
+        floatingWindow.setAlwaysOnTop(true, 'screen-saver');
+      }
+    }, 100);
   }
   return { success: true };
 });
@@ -164,6 +211,15 @@ ipcMain.handle('move-floating-window', (_, { deltaX, deltaY }) => {
   if (floatingWindow && !floatingWindow.isDestroyed()) {
     const [x, y] = floatingWindow.getPosition();
     floatingWindow.setPosition(x + deltaX, y + deltaY);
+  }
+  return { success: true };
+});
+
+ipcMain.handle('focus-main-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   }
   return { success: true };
 });

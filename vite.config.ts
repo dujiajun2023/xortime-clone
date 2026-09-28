@@ -5,6 +5,9 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   root: 'src/renderer',
+  // Electron loads the build over file://, where an absolute base ('/assets/...')
+  // resolves to the filesystem root and 404s, producing a blank window.
+  base: './',
   build: {
     outDir: '../../dist/renderer',
     emptyOutDir: true,
