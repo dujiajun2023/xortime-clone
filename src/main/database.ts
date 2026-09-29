@@ -108,6 +108,19 @@ export async function initDatabase() {
     }
   } catch {}
 
+  try {
+    const cols = db.exec("PRAGMA table_info(pomodoro_sessions)");
+    const names = cols.length > 0 ? cols[0].values.map((r: any[]) => r[1]) : [];
+    if (!names.includes('status')) {
+      db.run("ALTER TABLE pomodoro_sessions ADD COLUMN status TEXT DEFAULT 'completed'");
+      save();
+    }
+    if (!names.includes('actual_minutes')) {
+      db.run('ALTER TABLE pomodoro_sessions ADD COLUMN actual_minutes INTEGER');
+      save();
+    }
+  } catch {}
+
   const categoryCount = db.exec('SELECT COUNT(*) as count FROM categories');
   const count = categoryCount.length > 0 ? (categoryCount[0].values[0][0] as number) : 0;
   if (count === 0) {

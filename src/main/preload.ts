@@ -79,7 +79,9 @@ const api = {
     ipcRenderer.invoke('start-pomodoro-session', taskId, projectId, duration, type),
   completePomodoroSession: (sessionId: number) =>
     ipcRenderer.invoke('complete-pomodoro-session', sessionId),
-  getPomodoroSessions: (filters?: { taskId?: number; projectId?: number; startDate?: string; endDate?: string }) =>
+  breakPomodoroSession: (sessionId: number, actualMinutes: number) =>
+    ipcRenderer.invoke('break-pomodoro-session', sessionId, actualMinutes),
+  getPomodoroSessions: (filters?: { taskId?: number; projectId?: number; startDate?: string; endDate?: string; status?: string }) =>
     ipcRenderer.invoke('get-pomodoro-sessions', filters),
 
   // Tasks

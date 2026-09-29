@@ -205,7 +205,7 @@ export default function Stats() {
     const bucketOf = (dateStr: string) => index.get(byMonth ? dateStr.slice(0, 7) : dateStr.slice(0, 10));
 
     sessionData
-      .filter((s: any) => s.session_type === 'work')
+      .filter((s: any) => s.session_type === 'work' && s.status !== 'broken')
       .forEach((s: any) => {
         const b = bucketOf(s.started_at || '');
         if (!b) return;
@@ -225,22 +225,22 @@ export default function Stats() {
     setBuckets(list);
   };
 
+  const completedWork = sessions.filter((s) => s.session_type === 'work' && s.status !== 'broken');
+  const brokenWork = sessions.filter((s) => s.session_type === 'work' && s.status === 'broken');
+
   const totalPomodoros = buckets.reduce((s, b) => s + b.pomodoros, 0);
-  const totalMinutes = sessions
-    .filter((s) => s.session_type === 'work')
-    .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const totalMinutes = completedWork.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const brokenMinutes = brokenWork.reduce((sum, s) => sum + (s.actual_minutes || 0), 0);
   const totalTasks = buckets.reduce((s, b) => s + b.tasks, 0);
   const totalDone = buckets.reduce((s, b) => s + b.done, 0);
   const totalIntInt = buckets.reduce((s, b) => s + b.intInt, 0);
   const totalExtInt = buckets.reduce((s, b) => s + b.extInt, 0);
 
   const projectMinutes = new Map<number | null, number>();
-  sessions
-    .filter((s) => s.session_type === 'work')
-    .forEach((s) => {
-      const pid = s.project_id ?? taskInfo.get(s.task_id)?.projectId ?? null;
-      projectMinutes.set(pid, (projectMinutes.get(pid) || 0) + (s.duration_minutes || 0));
-    });
+  completedWork.forEach((s) => {
+    const pid = s.project_id ?? taskInfo.get(s.task_id)?.projectId ?? null;
+    projectMinutes.set(pid, (projectMinutes.get(pid) || 0) + (s.duration_minutes || 0));
+  });
 
   const projectData = projects
     .map((p: any, i: number) => ({
@@ -253,8 +253,8 @@ export default function Stats() {
   if (unassigned > 0) projectData.push({ label: '未分配项目', value: unassigned, color: '#9ca3af' });
 
   const taskMinutes = new Map<number, number>();
-  sessions
-    .filter((s) => s.session_type === 'work' && s.task_id)
+  completedWork
+    .filter((s) => s.task_id)
     .forEach((s) => {
       taskMinutes.set(s.task_id, (taskMinutes.get(s.task_id) || 0) + (s.duration_minutes || 0));
     });
@@ -296,6 +296,9 @@ export default function Stats() {
           <div className="text-3xl font-bold text-red-500 mt-1">{totalPomodoros}</div>
           <div className="text-xs text-gray-400 mt-1">
             日均 {buckets.length > 0 ? (totalPomodoros / buckets.length).toFixed(1) : '0'} / {bucketUnit}
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            💥 打烂 {brokenWork.length} 个{brokenMinutes > 0 ? ` · 已专注 ${brokenMinutes} 分钟` : ''}
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-5">

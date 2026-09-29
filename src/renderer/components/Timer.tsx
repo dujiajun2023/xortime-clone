@@ -20,6 +20,8 @@ export default function Timer() {
   const tickingAudioRef = useRef<AudioContext | null>(null);
   const endTimeRef = useRef<number | null>(null);
   const remainingAtPauseRef = useRef<number>(0);
+  const plannedSecondsRef = useRef<number>(0);
+  const [brokenToday, setBrokenToday] = useState({ count: 0, minutes: 0 });
 
   const sessionTypeRef = useRef(sessionType);
   const sessionIdRef = useRef(sessionId);
@@ -128,11 +130,21 @@ export default function Timer() {
         });
       });
     loadTasks();
+    loadBrokenToday();
   }, []);
 
   const loadTasks = async () => {
     const data = await window.api.getTasks({ isDone: false, isArchived: false });
     setTasks(data);
+  };
+
+  const loadBrokenToday = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const rows = await window.api.getPomodoroSessions({ startDate: today, endDate: today, status: 'broken' });
+    setBrokenToday({
+      count: rows.length,
+      minutes: rows.reduce((s: number, r: any) => s + (r.actual_minutes || 0), 0),
+    });
   };
 
   const updateFloating = useCallback((time: number, type: string, flash = false) => {
@@ -380,6 +392,7 @@ export default function Timer() {
       sessionIdRef.current = result.id;
 
       const timeLeftSeconds = duration * 60;
+      plannedSecondsRef.current = timeLeftSeconds;
       endTimeRef.current = Date.now() + timeLeftSeconds * 1000;
       setTimeLeft(timeLeftSeconds);
 
@@ -407,6 +420,12 @@ export default function Timer() {
   };
 
   const resetTimer = () => {
+    const sid = sessionIdRef.current;
+    if (sid && sessionTypeRef.current === 'work') {
+      const elapsed = Math.max(0, plannedSecondsRef.current - timeLeftRef.current);
+      const minutes = Math.floor(elapsed / 60);
+      window.api.breakPomodoroSession(sid, minutes).then(loadBrokenToday);
+    }
     setTimerState('idle');
     timerStateRef.current = 'idle';
     setSessionId(null);
@@ -562,6 +581,15 @@ export default function Timer() {
 
         <div className="mt-8 text-gray-500">
           今日已完成 <span className="text-2xl font-bold text-gray-800">{completedPomodoros}</span> 个番茄钟
+        </div>
+        <div className="mt-2 text-gray-500" title="中途放弃的番茄钟（重置时记录）">
+          <span className="inline-block align-middle" style={{ filter: 'grayscale(0.6)', transform: 'rotate(45deg)' }}>🍅</span>
+          <span className="align-middle">💥 今日打烂 </span>
+          <span className="text-2xl font-bold text-red-500 align-middle">{brokenToday.count}</span>
+          <span className="align-middle"> 个</span>
+          {brokenToday.minutes > 0 && (
+            <span className="ml-2 text-sm align-middle">（已专注 {brokenToday.minutes} 分钟）</span>
+          )}
         </div>
       </div>
     </div>

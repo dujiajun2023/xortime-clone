@@ -13,7 +13,22 @@ export function registerIpcHandlers() {
   });
 
   ipcMain.handle('complete-pomodoro-session', (_, sessionId) => {
-    runSql(`UPDATE pomodoro_sessions SET completed_at = datetime('now') WHERE id = ?`, [sessionId]);
+    runSql(
+      `UPDATE pomodoro_sessions
+       SET completed_at = datetime('now'), status = 'completed', actual_minutes = duration_minutes
+       WHERE id = ?`,
+      [sessionId]
+    );
+    return { success: true };
+  });
+
+  ipcMain.handle('break-pomodoro-session', (_, sessionId, actualMinutes) => {
+    runSql(
+      `UPDATE pomodoro_sessions
+       SET completed_at = datetime('now'), status = 'broken', actual_minutes = ?
+       WHERE id = ?`,
+      [actualMinutes, sessionId]
+    );
     return { success: true };
   });
 
@@ -28,6 +43,10 @@ export function registerIpcHandlers() {
     if (filters.projectId) {
       query += ' AND project_id = ?';
       params.push(filters.projectId);
+    }
+    if (filters.status) {
+      query += ' AND status = ?';
+      params.push(filters.status);
     }
     if (filters.startDate) {
       query += ' AND date(started_at) >= ?';

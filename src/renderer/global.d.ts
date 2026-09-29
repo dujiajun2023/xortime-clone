@@ -6,7 +6,8 @@ declare global {
       // Pomodoro sessions
       startPomodoroSession: (taskId: number | null, projectId: number | null, duration: number, type: string) => Promise<{ id: number }>;
       completePomodoroSession: (sessionId: number) => Promise<{ success: boolean }>;
-      getPomodoroSessions: (filters?: { taskId?: number; projectId?: number; startDate?: string; endDate?: string }) => Promise<any[]>;
+      breakPomodoroSession: (sessionId: number, actualMinutes: number) => Promise<{ success: boolean }>;
+      getPomodoroSessions: (filters?: { taskId?: number; projectId?: number; startDate?: string; endDate?: string; status?: string }) => Promise<any[]>;
 
       // Tasks
       createTask: (task: any) => Promise<{ id: number }>;
