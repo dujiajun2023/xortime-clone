@@ -12,11 +12,11 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('timer');
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'timer', label: '番茄钟', icon: '' },
+    { id: 'timer', label: '番茄钟', icon: '🍅' },
     { id: 'tasks', label: '任务', icon: '✓' },
     { id: 'projects', label: '项目', icon: '📁' },
     { id: 'next', label: '收集箱', icon: '💡' },
-    { id: 'stats', label: '统计', icon: '' },
+    { id: 'stats', label: '统计', icon: '📊' },
     { id: 'settings', label: '设置', icon: '⚙' },
   ];
 

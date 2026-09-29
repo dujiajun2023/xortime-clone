@@ -37,6 +37,23 @@ export default function NextThings() {
     await loadData();
   };
 
+  const handleConvert = async (thing: any) => {
+    await window.api.createTask({
+      title: thing.title,
+      description: thing.description,
+      category_id: thing.category_id,
+      project_id: null,
+      estimated_pomodoros: 1,
+      actual_pomodoros: 0,
+      is_done: false,
+      is_archived: false,
+      sort_order: 0,
+      deadline: null,
+    });
+    await window.api.deleteNextThing(thing.id);
+    await loadData();
+  };
+
   const handleUpdateTitle = async (id: number, title: string) => {
     await window.api.updateNextThing(id, { title });
     setEditingId(null);
@@ -149,12 +166,21 @@ export default function NextThings() {
                 {new Date(thing.created_at).toLocaleString('zh-CN')}
               </div>
             </div>
-            <button
-              onClick={() => handleDelete(thing.id)}
-              className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-500 hover:bg-red-50 rounded text-sm transition-opacity"
-            >
-              删除
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => handleConvert(thing)}
+                className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded text-sm"
+                title="移动到任务列表"
+              >
+                转为任务
+              </button>
+              <button
+                onClick={() => handleDelete(thing.id)}
+                className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-500 hover:bg-red-50 rounded text-sm transition-opacity"
+              >
+                删除
+              </button>
+            </div>
           </div>
         ))}
       </div>
