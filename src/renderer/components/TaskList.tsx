@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+type TaskFilter = 'active' | 'done' | 'archived';
+
 export default function TaskList() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [dailyTasks, setDailyTasks] = useState<any[]>([]);
@@ -7,6 +9,7 @@ export default function TaskList() {
   const [projects, setProjects] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>('active');
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
@@ -25,18 +28,34 @@ export default function TaskList() {
     loadDailyTasks();
   }, [selectedDate]);
 
+  useEffect(() => {
+    loadTasksByFilter();
+  }, [taskFilter]);
+
+  const loadTasksByFilter = async () => {
+    let data: any[];
+    if (taskFilter === 'active') {
+      data = await window.api.getTasks({ isDone: false, isArchived: false });
+    } else if (taskFilter === 'done') {
+      data = await window.api.getTasks({ isDone: true, isArchived: false });
+    } else {
+      data = await window.api.getTasks({ isArchived: true });
+    }
+    setTasks(data);
+  };
+
   const loadData = async () => {
-    const [tasksData, categoriesData, projectsData] = await Promise.all([
-      window.api.getTasks({ isDone: false, isArchived: false }),
+    const [categoriesData, projectsData] = await Promise.all([
       window.api.getCategories(),
       window.api.getProjects(true),
     ]);
-    setTasks(tasksData);
     setCategories(categoriesData);
     setProjects(projectsData);
+    await loadTasksByFilter();
   };
 
   const loadDailyTasks = async () => {
+    await window.api.syncRecurringTasks(selectedDate);
     const data = await window.api.getDailyTasks(selectedDate);
     setDailyTasks(data);
   };
@@ -81,9 +100,30 @@ export default function TaskList() {
     await loadDailyTasks();
   };
 
-  const handleDeleteTask = async (id: number) => {
-    await window.api.deleteTask(id);
-    await loadData();
+  const handleCompleteTask = async (id: number) => {
+    await window.api.updateTask(id, { is_done: true });
+    await loadTasksByFilter();
+  };
+
+  const handleArchiveTask = async (id: number) => {
+    await window.api.updateTask(id, { is_archived: true });
+    await loadTasksByFilter();
+  };
+
+  const handleToggleRecurring = async (task: any) => {
+    await window.api.updateTask(task.id, { is_recurring: !task.is_recurring });
+    await loadTasksByFilter();
+  };
+
+  const handleRestoreTask = async (id: number) => {
+    await window.api.restoreTask(id);
+    await loadTasksByFilter();
+  };
+
+  const handlePermanentDelete = async (id: number) => {
+    if (!confirm('确定要永久删除这个任务吗？此操作不可恢复。')) return;
+    await window.api.permanentDeleteTask(id);
+    await loadTasksByFilter();
   };
 
   const handleUpdateTitle = async (id: number, title: string) => {
@@ -221,16 +261,46 @@ export default function TaskList() {
       {/* Task Pool */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-700">任务池</h3>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            + 新建任务
-          </button>
+          <div className="flex items-center gap-4">
+            <h3 className="text-lg font-semibold text-gray-700">任务池</h3>
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setTaskFilter('active')}
+                className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                  taskFilter === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                进行中
+              </button>
+              <button
+                onClick={() => setTaskFilter('done')}
+                className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                  taskFilter === 'done' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                已完成
+              </button>
+              <button
+                onClick={() => setTaskFilter('archived')}
+                className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                  taskFilter === 'archived' ? 'bg-white text-gray-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                已废弃
+              </button>
+            </div>
+          </div>
+          {taskFilter === 'active' && (
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              + 新建任务
+            </button>
+          )}
         </div>
 
-        {showAddForm && (
+        {showAddForm && taskFilter === 'active' && (
           <div className="mb-6 p-4 bg-blue-50 rounded-lg">
             <input
               type="text"
@@ -335,43 +405,104 @@ export default function TaskList() {
                     </div>
                   )}
                   {task.description && <div className="text-sm text-gray-500 mt-1">{task.description}</div>}
-                  {dlStatus && (
+                  {dlStatus && taskFilter === 'active' && (
                     <span className={`inline-block text-xs px-2 py-0.5 rounded mt-1 ${dlStatus.color}`}>
                       {dlStatus.text}
                     </span>
                   )}
+                  {taskFilter === 'done' && task.completed_at && (
+                    <div className="text-xs text-green-600 mt-1">
+                      完成于 {new Date(task.completed_at).toLocaleString('zh-CN')}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-1 text-sm">
+                {taskFilter === 'active' && (
+                  <>
+                    <div className="flex items-center gap-1 text-sm">
+                      <button
+                        onClick={() => handleUpdatePomodoros(task.id, -1)}
+                        className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                      >
+                        -
+                      </button>
+                      <span className="w-8 text-center text-gray-700">{task.estimated_pomodoros} 🍅</span>
+                      <button
+                        onClick={() => handleUpdatePomodoros(task.id, 1)}
+                        className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => handleAddToToday(task)}
+                      className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
+                    >
+                      加入今日
+                    </button>
+                    <button
+                      onClick={() => handleToggleRecurring(task)}
+                      className={`px-3 py-1 rounded text-sm ${
+                        task.is_recurring
+                          ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                      title={task.is_recurring ? '已开启每日重复' : '开启每日重复'}
+                    >
+                      {task.is_recurring ? '🔁 每日' : '每日'}
+                    </button>
+                    <button
+                      onClick={() => handleCompleteTask(task.id)}
+                      className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
+                      title="标记为已完成"
+                    >
+                      完成
+                    </button>
+                    <button
+                      onClick={() => handleArchiveTask(task.id)}
+                      className="px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 text-sm"
+                      title="废弃此任务"
+                    >
+                      废弃
+                    </button>
+                  </>
+                )}
+                {taskFilter === 'done' && (
                   <button
-                    onClick={() => handleUpdatePomodoros(task.id, -1)}
-                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                    onClick={() => handleArchiveTask(task.id)}
+                    className="px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 text-sm"
+                    title="废弃此任务"
                   >
-                    -
+                    废弃
                   </button>
-                  <span className="w-8 text-center text-gray-700">{task.estimated_pomodoros} 🍅</span>
-                  <button
-                    onClick={() => handleUpdatePomodoros(task.id, 1)}
-                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                  >
-                    +
-                  </button>
-                </div>
-                <button
-                  onClick={() => handleAddToToday(task)}
-                  className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
-                >
-                  加入今日
-                </button>
-                <button
-                  onClick={() => handleDeleteTask(task.id)}
-                  className="opacity-0 group-hover:opacity-100 px-2 py-1 text-red-500 hover:bg-red-50 rounded text-sm transition-opacity"
-                >
-                  删除
-                </button>
+                )}
+                {taskFilter === 'archived' && (
+                  <>
+                    <button
+                      onClick={() => handleRestoreTask(task.id)}
+                      className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm"
+                    >
+                      恢复
+                    </button>
+                    <button
+                      onClick={() => handlePermanentDelete(task.id)}
+                      className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
+                    >
+                      永久删除
+                    </button>
+                  </>
+                )}
               </div>
             );
           })}
         </div>
+
+        {tasks.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            {taskFilter === 'active' && '没有进行中的任务'}
+            {taskFilter === 'done' && '没有已完成的任务'}
+            {taskFilter === 'archived' && '没有已废弃的任务'}
+          </div>
+        )}
       </div>
     </div>
   );

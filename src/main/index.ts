@@ -4,6 +4,12 @@ import fs from 'fs';
 import { initDatabase, queryOne } from './database';
 import { registerIpcHandlers } from './ipc';
 
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+}
+
 let mainWindow: BrowserWindow | null = null;
 let floatingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -222,6 +228,14 @@ ipcMain.handle('focus-main-window', () => {
     mainWindow.focus();
   }
   return { success: true };
+});
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
 });
 
 app.whenReady().then(async () => {

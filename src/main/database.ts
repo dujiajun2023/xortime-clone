@@ -121,6 +121,15 @@ export async function initDatabase() {
     }
   } catch {}
 
+  try {
+    const taskCols = db.exec("PRAGMA table_info(tasks)");
+    const taskNames = taskCols.length > 0 ? taskCols[0].values.map((r: any[]) => r[1]) : [];
+    if (!taskNames.includes('is_recurring')) {
+      db.run('ALTER TABLE tasks ADD COLUMN is_recurring INTEGER DEFAULT 0');
+      save();
+    }
+  } catch {}
+
   const categoryCount = db.exec('SELECT COUNT(*) as count FROM categories');
   const count = categoryCount.length > 0 ? (categoryCount[0].values[0][0] as number) : 0;
   if (count === 0) {

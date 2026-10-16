@@ -91,6 +91,10 @@ const api = {
     ipcRenderer.invoke('update-task', id, task),
   deleteTask: (id: number) =>
     ipcRenderer.invoke('delete-task', id),
+  restoreTask: (id: number) =>
+    ipcRenderer.invoke('restore-task', id),
+  permanentDeleteTask: (id: number) =>
+    ipcRenderer.invoke('permanent-delete-task', id),
   getTasks: (filters?: { projectId?: number; categoryId?: number; isDone?: boolean; isArchived?: boolean }) =>
     ipcRenderer.invoke('get-tasks', filters),
 
@@ -105,6 +109,8 @@ const api = {
     ipcRenderer.invoke('get-daily-tasks-range', startDate, endDate),
   incrementInterruption: (dailyTaskId: number, type: 'internal' | 'external') =>
     ipcRenderer.invoke('increment-interruption', dailyTaskId, type),
+  syncRecurringTasks: (date: string) =>
+    ipcRenderer.invoke('sync-recurring-tasks', date),
 
   // Projects
   createProject: (project: Omit<Project, 'id' | 'created_at' | 'closed_at'>) =>
@@ -155,7 +161,7 @@ const api = {
     ipcRenderer.invoke('show-floating-window'),
   hideFloatingWindow: () =>
     ipcRenderer.invoke('hide-floating-window'),
-  updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean }) =>
+  updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean; endTime?: number; timerActive?: boolean }) =>
     ipcRenderer.invoke('update-floating-window', data),
   closeFloatingWindow: () =>
     ipcRenderer.invoke('close-floating-window'),
@@ -163,7 +169,7 @@ const api = {
     ipcRenderer.invoke('move-floating-window', { deltaX, deltaY }),
   focusMainWindow: () =>
     ipcRenderer.invoke('focus-main-window'),
-  onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string }) => void) => {
+  onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string; endTime?: number; timerActive?: boolean }) => void) => {
     ipcRenderer.on('floating-update', (_, data) => callback(data));
     return () => ipcRenderer.removeListener('floating-update', callback as any);
   },

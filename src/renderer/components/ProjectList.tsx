@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+type ProjectFilter = 'active' | 'closed';
+
 export default function ProjectList() {
   const [projects, setProjects] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -7,16 +9,21 @@ export default function ProjectList() {
   const [editForm, setEditForm] = useState({ name: '', description: '' });
   const [newProject, setNewProject] = useState({ name: '', description: '' });
   const [taskCounts, setTaskCounts] = useState<Record<number, number>>({});
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>('active');
 
   useEffect(() => {
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    loadProjects();
+  }, [projectFilter]);
+
   const loadProjects = async () => {
-    const data = await window.api.getProjects();
+    const isActive = projectFilter === 'active' ? true : false;
+    const data = await window.api.getProjects(isActive);
     setProjects(data);
 
-    // Load task counts for each project
     const counts: Record<number, number> = {};
     for (const project of data) {
       const tasks = await window.api.getTasks({ projectId: project.id, isDone: false, isArchived: false });
@@ -50,6 +57,16 @@ export default function ProjectList() {
     await loadProjects();
   };
 
+  const handleCloseProject = async (id: number) => {
+    await window.api.closeProject(id);
+    await loadProjects();
+  };
+
+  const handleReopenProject = async (id: number) => {
+    await window.api.updateProject(id, { is_active: true });
+    await loadProjects();
+  };
+
   const handleDeleteProject = async (id: number) => {
     if (!confirm('确定要删除这个项目吗？项目下的任务不会被删除。')) return;
     await window.api.deleteProject(id);
@@ -59,16 +76,38 @@ export default function ProjectList() {
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">项目管理</h2>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          + 新建项目
-        </button>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold text-gray-800">项目管理</h2>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setProjectFilter('active')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                projectFilter === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              进行中
+            </button>
+            <button
+              onClick={() => setProjectFilter('closed')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                projectFilter === 'closed' ? 'bg-white text-gray-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              已关闭
+            </button>
+          </div>
+        </div>
+        {projectFilter === 'active' && (
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            + 新建项目
+          </button>
+        )}
       </div>
 
-      {showAddForm && (
+      {showAddForm && projectFilter === 'active' && (
         <div className="mb-6 p-6 bg-blue-50 rounded-xl">
           <input
             type="text"
@@ -160,18 +199,37 @@ export default function ProjectList() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleStartEdit(project)}
-                    className="flex-1 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProject(project.id)}
-                    className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-sm"
-                  >
-                    删除
-                  </button>
+                  {project.is_active ? (
+                    <>
+                      <button
+                        onClick={() => handleStartEdit(project)}
+                        className="flex-1 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        onClick={() => handleCloseProject(project.id)}
+                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm"
+                      >
+                        关闭
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleReopenProject(project.id)}
+                        className="flex-1 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm"
+                      >
+                        重新打开
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProject(project.id)}
+                        className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-sm"
+                      >
+                        删除
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -181,7 +239,7 @@ export default function ProjectList() {
 
       {projects.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          还没有项目，点击上方按钮创建第一个项目
+          {projectFilter === 'active' ? '还没有项目，点击上方按钮创建第一个项目' : '没有已关闭的项目'}
         </div>
       )}
     </div>

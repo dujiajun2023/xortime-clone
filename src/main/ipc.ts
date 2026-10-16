@@ -129,6 +129,10 @@ export function registerIpcHandlers() {
       fields.push('deadline = ?');
       params.push(task.deadline);
     }
+    if (task.is_recurring !== undefined) {
+      fields.push('is_recurring = ?');
+      params.push(task.is_recurring ? 1 : 0);
+    }
 
     if (fields.length === 0) return { success: false };
 
@@ -138,6 +142,16 @@ export function registerIpcHandlers() {
   });
 
   ipcMain.handle('delete-task', (_, id) => {
+    runSql('UPDATE tasks SET is_archived = 1 WHERE id = ?', [id]);
+    return { success: true };
+  });
+
+  ipcMain.handle('restore-task', (_, id) => {
+    runSql('UPDATE tasks SET is_archived = 0, is_done = 0, completed_at = NULL WHERE id = ?', [id]);
+    return { success: true };
+  });
+
+  ipcMain.handle('permanent-delete-task', (_, id) => {
     runSql('DELETE FROM tasks WHERE id = ?', [id]);
     return { success: true };
   });
@@ -214,6 +228,25 @@ export function registerIpcHandlers() {
 
     params.push(id);
     runSql(`UPDATE daily_tasks SET ${fields.join(', ')} WHERE id = ?`, params);
+    return { success: true };
+  });
+
+  ipcMain.handle('sync-recurring-tasks', (_, date) => {
+    const recurring = queryAll(
+      "SELECT id, estimated_pomodoros FROM tasks WHERE is_recurring = 1 AND is_archived = 0 AND is_done = 0"
+    );
+    for (const task of recurring) {
+      const existing = queryAll(
+        "SELECT id FROM daily_tasks WHERE task_id = ? AND date = ?",
+        [task.id, date]
+      );
+      if (existing.length === 0) {
+        runSql(
+          "INSERT INTO daily_tasks (task_id, date, estimated_pomodoros, actual_pomodoros, internal_interruptions, external_interruptions, is_done) VALUES (?, ?, ?, 0, 0, 0, 0)",
+          [task.id, date, task.estimated_pomodoros]
+        );
+      }
+    }
     return { success: true };
   });
 

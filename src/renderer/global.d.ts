@@ -13,6 +13,8 @@ declare global {
       createTask: (task: any) => Promise<{ id: number }>;
       updateTask: (id: number, task: any) => Promise<{ success: boolean }>;
       deleteTask: (id: number) => Promise<{ success: boolean }>;
+      restoreTask: (id: number) => Promise<{ success: boolean }>;
+      permanentDeleteTask: (id: number) => Promise<{ success: boolean }>;
       getTasks: (filters?: any) => Promise<any[]>;
 
       // Daily tasks
@@ -21,6 +23,7 @@ declare global {
       getDailyTasks: (date: string) => Promise<any[]>;
       getDailyTasksRange: (startDate: string, endDate: string) => Promise<any[]>;
       incrementInterruption: (dailyTaskId: number, type: 'internal' | 'external') => Promise<{ success: boolean }>;
+      syncRecurringTasks: (date: string) => Promise<{ success: boolean }>;
 
       // Projects
       createProject: (project: any) => Promise<{ id: number }>;
@@ -52,11 +55,11 @@ declare global {
       // Floating window
       showFloatingWindow: () => Promise<{ success: boolean }>;
       hideFloatingWindow: () => Promise<{ success: boolean }>;
-      updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean }) => Promise<{ success: boolean }>;
+      updateFloatingWindow: (data: { time: string; type: string; taskName: string; flash?: boolean; endTime?: number; timerActive?: boolean }) => Promise<{ success: boolean }>;
       closeFloatingWindow: () => Promise<{ success: boolean }>;
       moveFloatingWindow: (deltaX: number, deltaY: number) => Promise<{ success: boolean }>;
       focusMainWindow: () => Promise<{ success: boolean }>;
-      onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string; flash?: boolean }) => void) => () => void;
+      onFloatingUpdate: (callback: (data: { time: string; type: string; taskName: string; flash?: boolean; endTime?: number; timerActive?: boolean }) => void) => () => void;
     };
   }
 }

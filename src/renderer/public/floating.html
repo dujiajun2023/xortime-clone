@@ -72,26 +72,76 @@
     const taskEl = document.getElementById('task');
     const container = document.getElementById('draggable');
 
+    let localInterval = null;
+    let localEndTime = null;
+    let localType = 'work';
+
+    function formatTime(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
+    }
+
+    function startLocalTimer(endTime, type) {
+      localEndTime = endTime;
+      localType = type;
+      if (localInterval) clearInterval(localInterval);
+      localInterval = setInterval(() => {
+        if (!localEndTime) return;
+        const remaining = Math.max(0, Math.ceil((localEndTime - Date.now()) / 1000));
+        timeEl.textContent = formatTime(remaining);
+        if (remaining <= 0) {
+          clearInterval(localInterval);
+          localInterval = null;
+        }
+      }, 200);
+    }
+
+    function stopLocalTimer() {
+      if (localInterval) {
+        clearInterval(localInterval);
+        localInterval = null;
+      }
+      localEndTime = null;
+    }
+
     window.api.onFloatingUpdate((data) => {
-      timeEl.textContent = data.time;
       container.classList.toggle('flash', !!data.flash);
+
       if (data.flash) {
+        stopLocalTimer();
+        timeEl.textContent = data.time || '00:00';
         badge.textContent = '完成';
         badge.className = 'type-badge type-work';
-      } else if (data.type === 'work') {
-        badge.textContent = '专注';
-        badge.className = 'type-badge type-work';
-      } else if (data.type === 'short_break') {
-        badge.textContent = '短休';
-        badge.className = 'type-badge type-short';
+      } else if (data.timerActive && data.endTime) {
+        if (data.type === 'work') {
+          badge.textContent = '专注';
+          badge.className = 'type-badge type-work';
+        } else if (data.type === 'short_break') {
+          badge.textContent = '短休';
+          badge.className = 'type-badge type-short';
+        } else {
+          badge.textContent = '长休';
+          badge.className = 'type-badge type-long';
+        }
+        startLocalTimer(data.endTime, data.type);
       } else {
-        badge.textContent = '长休';
-        badge.className = 'type-badge type-long';
+        stopLocalTimer();
+        timeEl.textContent = data.time;
+        if (data.type === 'work') {
+          badge.textContent = '专注';
+          badge.className = 'type-badge type-work';
+        } else if (data.type === 'short_break') {
+          badge.textContent = '短休';
+          badge.className = 'type-badge type-short';
+        } else {
+          badge.textContent = '长休';
+          badge.className = 'type-badge type-long';
+        }
       }
       taskEl.textContent = data.taskName || '';
     });
 
-    // Drag functionality; a press without movement is treated as a click
     let isDragging = false;
     let moved = false;
     let startX, startY;
