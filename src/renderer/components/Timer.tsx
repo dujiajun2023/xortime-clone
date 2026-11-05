@@ -54,14 +54,6 @@ export default function Timer() {
     if (!savedEndTime || !savedSessionType) return;
 
     const endTime = parseInt(savedEndTime, 10);
-    if (!(endTime > Date.now())) {
-      clearPersistedTimer();
-      return;
-    }
-
-    endTimeRef.current = endTime;
-    setTimeLeft(Math.max(0, Math.ceil((endTime - Date.now()) / 1000)));
-    setSessionType(savedSessionType as 'work' | 'short_break' | 'long_break');
 
     const savedTaskId = localStorage.getItem('xortime_selectedTaskId');
     if (savedTaskId) setSelectedTaskId(parseInt(savedTaskId, 10));
@@ -77,6 +69,25 @@ export default function Timer() {
       ? parseInt(savedPlanned, 10)
       : Math.ceil((endTime - Date.now()) / 1000);
 
+    setSessionType(savedSessionType as 'work' | 'short_break' | 'long_break');
+    endTimeRef.current = endTime;
+
+    if (!(endTime > Date.now())) {
+      // Timer expired while user was on another tab.
+      // Restore as 'running' with timeLeft=0 so the tick effect immediately
+      // fires handleTimerComplete, which handles the completion flow
+      // (flash, count increment, session complete, enter confirm).
+      // Clear any pending confirm state to prevent double completion.
+      localStorage.removeItem('xortime_confirm');
+      console.log('[timer] restore: timer already expired, triggering completion');
+      setTimeLeft(0);
+      setTimerState('running');
+      window.api.showFloatingWindow();
+      window.api.updateFloatingWindow({ time: '00:00', type: savedSessionType, taskName: '', flash: true });
+      return;
+    }
+
+    setTimeLeft(Math.max(0, Math.ceil((endTime - Date.now()) / 1000)));
     setTimerState('running');
     window.api.showFloatingWindow();
     const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
@@ -270,8 +281,14 @@ export default function Timer() {
     const currentSettings = settingsRef.current;
     const currentCompleted = completedPomodorosRef.current;
 
+    console.log('[timer] handleTimerComplete fired', { currentSessionId, currentType, currentCompleted });
+
     if (currentSessionId) {
-      await window.api.completePomodoroSession(currentSessionId);
+      try {
+        await window.api.completePomodoroSession(currentSessionId);
+      } catch (err) {
+        console.error('[timer] completePomodoroSession failed:', err);
+      }
     }
 
     if (currentSettings?.play_alarm) {
@@ -286,23 +303,27 @@ export default function Timer() {
       // Record the finished pomodoro against today's plan for this task
       const taskId = selectedTaskIdRef.current;
       if (taskId) {
-        const dateStr = new Date().toISOString().split('T')[0];
-        const dailyTasks = await window.api.getDailyTasks(dateStr);
-        const dailyTask = dailyTasks.find((dt: any) => dt.task_id === taskId);
-        if (dailyTask) {
-          await window.api.updateDailyTask(dailyTask.id, {
-            actual_pomodoros: (dailyTask.actual_pomodoros || 0) + 1,
-          });
-        } else {
-          await window.api.createDailyTask({
-            task_id: taskId,
-            date: dateStr,
-            estimated_pomodoros: 1,
-            actual_pomodoros: 1,
-            internal_interruptions: 0,
-            external_interruptions: 0,
-            is_done: false,
-          });
+        try {
+          const dateStr = new Date().toISOString().split('T')[0];
+          const dailyTasks = await window.api.getDailyTasks(dateStr);
+          const dailyTask = dailyTasks.find((dt: any) => dt.task_id === taskId);
+          if (dailyTask) {
+            await window.api.updateDailyTask(dailyTask.id, {
+              actual_pomodoros: (dailyTask.actual_pomodoros || 0) + 1,
+            });
+          } else {
+            await window.api.createDailyTask({
+              task_id: taskId,
+              date: dateStr,
+              estimated_pomodoros: 1,
+              actual_pomodoros: 1,
+              internal_interruptions: 0,
+              external_interruptions: 0,
+              is_done: false,
+            });
+          }
+        } catch (err) {
+          console.error('[timer] daily task update failed:', err);
         }
       }
 
@@ -371,6 +392,7 @@ export default function Timer() {
           if (remaining <= 0) {
             // handleTimerComplete guards itself via completedRef, so repeated
             // ticks cannot double-fire it
+            console.log('[timer] tick detected remaining=0, calling handleTimerComplete');
             handleTimerCompleteRef.current();
           }
         }
