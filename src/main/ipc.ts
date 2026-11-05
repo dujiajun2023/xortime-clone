@@ -184,7 +184,7 @@ export function registerIpcHandlers() {
   // Daily tasks
   ipcMain.handle('create-daily-task', (_, dailyTask) => {
     const result = runSql(
-      `INSERT INTO daily_tasks (task_id, date, estimated_pomodoros, actual_pomodoros, internal_interruptions, external_interruptions, is_done)
+      `INSERT OR IGNORE INTO daily_tasks (task_id, date, estimated_pomodoros, actual_pomodoros, internal_interruptions, external_interruptions, is_done)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         dailyTask.task_id,

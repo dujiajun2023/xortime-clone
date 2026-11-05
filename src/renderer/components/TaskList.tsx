@@ -435,9 +435,14 @@ export default function TaskList() {
                     </div>
                     <button
                       onClick={() => handleAddToToday(task)}
-                      className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
+                      disabled={dailyTasks.some((dt: any) => dt.task_id === task.id)}
+                      className={`px-3 py-1 rounded text-sm ${
+                        dailyTasks.some((dt: any) => dt.task_id === task.id)
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-green-100 text-green-700 hover:bg-green-200'
+                      }`}
                     >
-                      加入今日
+                      {dailyTasks.some((dt: any) => dt.task_id === task.id) ? '已加入' : '加入今日'}
                     </button>
                     <button
                       onClick={() => handleToggleRecurring(task)}

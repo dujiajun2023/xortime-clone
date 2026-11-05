@@ -8,7 +8,9 @@ let dbPath: string;
 
 export async function initDatabase() {
   const SQL = await initSqlJs();
-  dbPath = path.join(app.getPath('userData'), 'xortime.db');
+  dbPath = process.env.ELECTRON_USER_DATA
+    ? path.join(process.env.ELECTRON_USER_DATA, 'xortime.db')
+    : path.join(app.getPath('userData'), 'xortime.db');
 
   if (fs.existsSync(dbPath)) {
     const buffer = fs.readFileSync(dbPath);
@@ -128,6 +130,18 @@ export async function initDatabase() {
       db.run('ALTER TABLE tasks ADD COLUMN is_recurring INTEGER DEFAULT 0');
       save();
     }
+  } catch {}
+
+  // Deduplicate existing daily_tasks, then add UNIQUE index on (task_id, date)
+  try {
+    // Keep the row with the smallest id for each (task_id, date) pair; remove the rest
+    db.run(`
+      DELETE FROM daily_tasks WHERE id NOT IN (
+        SELECT MIN(id) FROM daily_tasks GROUP BY task_id, date
+      )
+    `);
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_tasks_task_date ON daily_tasks(task_id, date)');
+    save();
   } catch {}
 
   const categoryCount = db.exec('SELECT COUNT(*) as count FROM categories');
