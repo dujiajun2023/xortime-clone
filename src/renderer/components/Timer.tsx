@@ -256,6 +256,7 @@ export default function Timer() {
     type === 'long_break' ? (s?.long_break_minutes || 15) : (s?.break_minutes || 5);
 
   const enterConfirm = (next: BreakType) => {
+    console.log('[timer] enterConfirm', next);
     setConfirmNext(next);
     setTimerState('confirm');
     timerStateRef.current = 'confirm';
@@ -390,22 +391,41 @@ export default function Timer() {
           setTimeLeft(remaining);
           
           if (remaining <= 0) {
-            // handleTimerComplete guards itself via completedRef, so repeated
-            // ticks cannot double-fire it
             console.log('[timer] tick detected remaining=0, calling handleTimerComplete');
             handleTimerCompleteRef.current();
           }
         }
       };
       
-      // Use 50ms interval for faster updates
+      // Use 50ms interval for display updates
       const tickInterval = setInterval(tick, 50);
       
       // Also tick immediately to avoid initial delay
       tick();
       
+      // Backup: schedule a precise setTimeout that fires exactly when the timer
+      // should end. setInterval can be throttled in background tabs (Chromium
+      // may limit it to 1 tick/sec or less), so this setTimeout ensures the
+      // completion flow fires promptly regardless of tab visibility.
+      // Both paths check completedRef, so only one actually runs.
+      const endTime = endTimeRef.current;
+      let completionTimeout: NodeJS.Timeout | undefined;
+      if (endTime) {
+        const delay = Math.max(0, endTime - Date.now() + 50);
+        completionTimeout = setTimeout(() => {
+          console.log('[timer] completion setTimeout fired, remaining check');
+          const remaining = endTimeRef.current
+            ? Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000))
+            : 0;
+          if (remaining <= 0) {
+            handleTimerCompleteRef.current();
+          }
+        }, delay);
+      }
+      
       return () => {
         clearInterval(tickInterval);
+        if (completionTimeout) clearTimeout(completionTimeout);
       };
     }
   }, [timerState]);
