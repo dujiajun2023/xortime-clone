@@ -4,6 +4,11 @@ import fs from 'fs';
 import { initDatabase, queryOne } from './database';
 import { registerIpcHandlers } from './ipc';
 
+// Test hook: full isolation (lock file, localStorage, DB) when ELECTRON_USER_DATA is set
+if (process.env.ELECTRON_USER_DATA) {
+  app.setPath('userData', process.env.ELECTRON_USER_DATA);
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
