@@ -48,7 +48,10 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        {activeTab === 'timer' && <Timer />}
+        {/* Keep Timer mounted while hidden so an off-screen pomodoro still completes (flash/count/record). */}
+        <div className={activeTab === 'timer' ? '' : 'hidden'}>
+          <Timer active={activeTab === 'timer'} />
+        </div>
         {activeTab === 'tasks' && <TaskList />}
         {activeTab === 'projects' && <ProjectList />}
         {activeTab === 'next' && <NextThings />}

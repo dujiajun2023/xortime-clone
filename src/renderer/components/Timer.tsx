@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 type TimerState = 'idle' | 'running' | 'paused' | 'confirm';
 type BreakType = 'short_break' | 'long_break';
 
-export default function Timer() {
+export default function Timer({ active = true }: { active?: boolean }) {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [timerState, setTimerState] = useState<TimerState>('idle');
   const [sessionType, setSessionType] = useState<'work' | 'short_break' | 'long_break'>('work');
@@ -141,7 +141,7 @@ export default function Timer() {
     }
   }, [timerState, confirmNext]);
 
-  useEffect(() => {
+  const loadSettings = () => {
     window.api.getSettings()
       .then(setSettings)
       .catch((err) => {
@@ -158,9 +158,7 @@ export default function Timer() {
           auto_start_pomodoro: false,
         });
       });
-    loadTasks();
-    loadBrokenToday();
-  }, []);
+  };
 
   const loadTasks = async () => {
     const data = await window.api.getTasks({ isDone: false, isArchived: false });
@@ -175,6 +173,15 @@ export default function Timer() {
       minutes: rows.reduce((s: number, r: any) => s + (r.actual_minutes || 0), 0),
     });
   };
+
+  // Timer no longer remounts on tab switch; reload what a remount used to refresh.
+  useEffect(() => {
+    if (active) {
+      loadSettings();
+      loadTasks();
+      loadBrokenToday();
+    }
+  }, [active]);
 
   const updateFloating = useCallback((time: number, type: string, flash = false, endTime?: number, timerActive?: boolean) => {
     const mins = Math.floor(time / 60);
